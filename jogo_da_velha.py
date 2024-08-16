@@ -1,8 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-
-# O jogador min -> quer minimizar o placar ->  value 1 
-# X jogador max -> quer maximizar o placar -> value -1
+import csv
 
 class JogoDaVelha:
     def __init__(self, root):
@@ -12,54 +10,48 @@ class JogoDaVelha:
         self.jogador_atual = 'X'
         self.ia = 'O'
         self.humano = 'X'
+        self.jogadas = []
+        self.arquivo_csv = open(r"jogadas.csv", "a", newline='')  # Abre o arquivo CSV para anexar jogadas
+        self.writer = csv.writer(self.arquivo_csv)
+        self.writer.writerow(['vencedor', 'mandala'])  # Cabeçalho do CSV
         self.criar_interface()
+        self.fim_de_jogo = False
 
     def criar_interface(self):
-        """Inicialmente cria a interface utilizando o TKInter com o tabuleiro vazio"""
+        """Cria a interface utilizando o TKInter com o tabuleiro vazio e botão de reinício"""
         for i in range(3):
             for j in range(3):
-                self.botao[i][j] = tk.Button(self.root, text='', font=('Arial', 40), width=5, height=2, command=lambda i=i, j=j: self.humano_jogar(i, j))
+                self.botao[i][j] = tk.Button(self.root, text='', font=('Arial', 40), width=5, height=2,
+                                             command=lambda i=i, j=j: self.humano_jogar(i, j))
                 self.botao[i][j].grid(row=i, column=j)
+        
+        self.botao_reiniciar = tk.Button(self.root, text='Reiniciar', font=('Arial', 20), command=self.reiniciar_jogo)
+        self.botao_reiniciar.grid(row=3, column=0, columnspan=3, sticky="nsew")
 
     def eh_fim_de_jogo(self, jogador_atual) -> bool:
         """Verifica se o jogo acabou e exibe uma mensagem de vitória ou empate"""
         if self.checar_vencedor(jogador_atual):
             messagebox.showinfo("Fim de Jogo", f"Jogador {jogador_atual} venceu!")
-            self.reiniciar_jogo()
+            mandala = self.mandala_vencedora(jogador_atual)
+            self.gravar_mandala(jogador_atual, mandala)
+            self.fim_de_jogo = True
             return True
         elif self.checar_empate():
             messagebox.showinfo("Empate", "O jogo empatou!")
-            self.reiniciar_jogo()
+            self.fim_de_jogo = True
             return True
         return False
 
-    def melhor_movimento_ia(self):
-        """Calcula o melhor movimento para a IA usando o algoritmo Minimax"""
-        melhor_valor = -float('inf')
-        melhor_movimento = None
-
-        for i in range(3):
-            for j in range(3):
-                if self.botao[i][j]['text'] == '':
-                    # Faz o movimento
-                    self.botao[i][j]['text'] = self.ia
-                    movimento_valor = self.minimax(False)
-                    # Desfaz o movimento
-                    self.botao[i][j]['text'] = ''
-                    if movimento_valor > melhor_valor:
-                        melhor_valor = movimento_valor
-                        melhor_movimento = (i, j)
-
-        return melhor_movimento
-
     def minimax(self, eh_maximizador):
-        """Algoritmo Minimax para calcular o valor ótimo do movimento"""
+        """Algoritmo Minimax para calcular o valor ótimo do movimento e o movimento em si"""
         if self.checar_vencedor(self.ia):
-            return 1
+            return 1, None
         elif self.checar_vencedor(self.humano):
-            return -1
+            return -1, None
         elif self.checar_empate():
-            return 0
+            return 0, None
+
+        melhor_movimento = None
 
         if eh_maximizador:
             melhor_valor = -float('inf')
@@ -67,37 +59,42 @@ class JogoDaVelha:
                 for j in range(3):
                     if self.botao[i][j]['text'] == '':
                         self.botao[i][j]['text'] = self.ia
-                        valor = self.minimax(False)
+                        valor, _ = self.minimax(False)
                         self.botao[i][j]['text'] = ''
-                        melhor_valor = max(melhor_valor, valor)
-            return melhor_valor
-
-        else:
-            melhor_valor = float('inf')
-            for i in range(3):
-                for j in range(3):
-                    if self.botao[i][j]['text'] == '':
-                        self.botao[i][j]['text'] = self.humano
-                        valor = self.minimax(True)
-                        self.botao[i][j]['text'] = ''
-                        melhor_valor = min(melhor_valor, valor)
-            return melhor_valor
+                        if valor > melhor_valor:
+                            melhor_valor = valor
+                            melhor_movimento = (i, j)
+            return melhor_valor, melhor_movimento
+        
+        melhor_valor = float('inf')
+        for i in range(3):
+            for j in range(3):
+                if self.botao[i][j]['text'] == '':
+                    self.botao[i][j]['text'] = self.humano
+                    valor, _ = self.minimax(True)
+                    self.botao[i][j]['text'] = ''
+                    if valor < melhor_valor:
+                        melhor_valor = valor
+                        melhor_movimento = (i, j)
+        return melhor_valor, melhor_movimento
 
     def humano_jogar(self, i, j):
         """Define a lógica do jogador humano e define a próxima jogada ou o fim do jogo (vitória, empate ou IA)"""
-        if self.botao[i][j]['text'] == '' and self.jogador_atual == 'X':
+        if self.botao[i][j]['text'] == '' and self.jogador_atual == 'X' and not self.fim_de_jogo:
             self.botao[i][j]['text'] = self.jogador_atual
+            self.jogadas.append((i, j))
             if not self.eh_fim_de_jogo(self.jogador_atual):
                 self.jogador_atual = 'O'
                 self.ia_jogar()
 
     def ia_jogar(self):
         """Define a jogada da IA e verifica o estado do jogo após a jogada da IA"""
-        movimento = self.melhor_movimento_ia()
+        _, movimento = self.minimax(True)
         if movimento:
             i, j = movimento
             self.botao[i][j]['text'] = 'O'
-            if not self.eh_fim_de_jogo(self.jogador_atual):
+            self.jogadas.append((i, j))
+            if not self.eh_fim_de_jogo(self.ia):
                 self.jogador_atual = 'X'
 
     def checar_vencedor(self, jogador):
@@ -123,12 +120,28 @@ class JogoDaVelha:
 
     def reiniciar_jogo(self):
         """Reinicia o tabuleiro e o jogador atual"""
+        self.fim_de_jogo = False
         for i in range(3):
             for j in range(3):
                 self.botao[i][j]['text'] = ''
         self.jogador_atual = 'X'
+        self.jogadas = []
+
+    def mandala_vencedora(self, jogador):
+        """Retorna a sequência de jogadas vencedoras"""
+        return self.jogadas[::2] if jogador == self.humano else self.jogadas[1::2]
+    
+    def gravar_mandala(self, jogador, mandala):
+        """Grava a sequência de jogadas vencedoras em um arquivo CSV"""
+        mandala_str = ';'.join([f"{i},{j}" for i, j in mandala])  # Converte a mandala em string
+        self.writer.writerow([jogador, mandala_str])
+    
+    def fechar_arquivo(self):
+        """Fecha o arquivo quando o jogo termina"""
+        self.arquivo_csv.close()
 
 if __name__ == "__main__":
     root = tk.Tk()
     jogo = JogoDaVelha(root)
+    root.protocol("WM_DELETE_WINDOW", lambda: [jogo.fechar_arquivo(), root.destroy()])
     root.mainloop()
